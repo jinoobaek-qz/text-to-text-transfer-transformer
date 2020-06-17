@@ -23,6 +23,17 @@ from absl import flags
 from absl import logging
 import gin
 from mesh_tensorflow.transformer import utils
+try:
+  import wandb
+
+  wandb.ensure_configured()
+  if wandb.api.api_key is None:
+    _has_wandb = False
+    wandb.termwarn("W&B installed but not logged in.  Run `wandb login` or set the WANDB_API_KEY env variable.")
+  else:
+    _has_wandb = False if os.getenv("WANDB_DISABLED") else True
+except ImportError:
+  _has_wandb = False
 import pkg_resources
 import t5
 from t5.models import mtf_model
@@ -113,6 +124,12 @@ flags.DEFINE_string(
     "export_dir", "",
     "Directory to export SavedModels to. Will use `model_dir` if unspecified.")
 
+# WANDB
+flags.DEFINE_string(
+    "wandb_project_name", None,
+    "wandb project name. If not defined, does not log to wandb."
+)
+
 FLAGS = flags.FLAGS
 
 
@@ -143,6 +160,10 @@ def main(_):
         "No write access to model directory. Skipping command logging.")
 
   utils.parse_gin_defaults_and_flags()
+
+  if _has_wandb and FLAGS.wandb_project_name:
+    wandb.init(project=FLAGS.wandb_project_name, config=FLAGS, sync_tensorboard=True)
+    wandb.config.update({'gin_config_str': gin.config_str()})
 
   if FLAGS.use_model_api:
     model = mtf_model.MtfModel(
@@ -229,6 +250,8 @@ def main(_):
         gcp_project=FLAGS.gcp_project,
         tpu_zone=FLAGS.tpu_zone,
         model_dir=FLAGS.model_dir)
+  if _has_wandb and FLAGS.wandb_project_name:
+    wandb.config.update({'gin_operative_config', gin.operative_config_str()})
 
 
 def console_entry_point():
